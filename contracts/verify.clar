@@ -43,7 +43,7 @@
 (define-private (is-valid-principal (address principal))
     (and 
         (not (is-eq address (as-contract tx-sender)))  ;; Prevent contract self-interaction
-        (not (is-eq address tx-sender))  ;; Optional: prevent sender from manipulating other addresses
+        (not (is-eq address tx-sender))  ;; Prevent sender from manipulating other addresses
     )
 )
 
@@ -66,25 +66,19 @@
 (define-public (request-verification (kyc-data (string-utf8 500)))
     (begin
         ;; Validate KYC data input
-        (if (is-valid-kyc-data kyc-data)
-            (let 
-                ((current-status (get status (get-verification-status tx-sender))))
-                (if (is-eq current-status u0)
-                    (begin 
-                        (map-set verified-addresses tx-sender
-                            {
-                                status: u1,
-                                timestamp: block-height,
-                                kyc-data: kyc-data,
-                                verifier: tx-sender
-                            }
-                        )
-                        (ok true)
-                    )
-                    (err ERR_ALREADY_VERIFIED)
-                )
+        (asserts! (is-valid-kyc-data kyc-data) (err ERR_INVALID_INPUT))
+        (let 
+            ((current-status (get status (get-verification-status tx-sender))))
+            (asserts! (is-eq current-status u0) (err ERR_ALREADY_VERIFIED))
+            (map-set verified-addresses tx-sender
+                {
+                    status: u1,
+                    timestamp: block-height,
+                    kyc-data: kyc-data,
+                    verifier: tx-sender
+                }
             )
-            (err ERR_INVALID_INPUT)
+            (ok true)
         )
     )
 )
@@ -100,20 +94,16 @@
         ;; Get current verification status
         (let ((current-status (get status (get-verification-status address))))
             ;; Validate status for verification
-            (if (validate-status-change current-status (list u1))
-                (begin 
-                    (map-set verified-addresses address
-                        {
-                            status: u2,
-                            timestamp: block-height,
-                            kyc-data: (get kyc-data (get-verification-status address)),
-                            verifier: tx-sender
-                        }
-                    )
-                    (ok true)
-                )
-                (err ERR_INVALID_STATUS)
+            (asserts! (validate-status-change current-status (list u1)) (err ERR_INVALID_STATUS))
+            (map-set verified-addresses address
+                {
+                    status: u2,
+                    timestamp: block-height,
+                    kyc-data: (get kyc-data (get-verification-status address)),
+                    verifier: tx-sender
+                }
             )
+            (ok true)
         )
     )
 )
@@ -129,20 +119,16 @@
         ;; Get current verification status
         (let ((current-status (get status (get-verification-status address))))
             ;; Validate status for rejection
-            (if (validate-status-change current-status (list u1))
-                (begin 
-                    (map-set verified-addresses address
-                        {
-                            status: u3,
-                            timestamp: block-height,
-                            kyc-data: (get kyc-data (get-verification-status address)),
-                            verifier: tx-sender
-                        }
-                    )
-                    (ok true)
-                )
-                (err ERR_INVALID_STATUS)
+            (asserts! (validate-status-change current-status (list u1)) (err ERR_INVALID_STATUS))
+            (map-set verified-addresses address
+                {
+                    status: u3,
+                    timestamp: block-height,
+                    kyc-data: (get kyc-data (get-verification-status address)),
+                    verifier: tx-sender
+                }
             )
+            (ok true)
         )
     )
 )
@@ -158,38 +144,28 @@
         ;; Get current verification status
         (let ((current-status (get status (get-verification-status address))))
             ;; Validate status for revocation
-            (if (validate-status-change current-status (list u1 u2))
-                (begin 
-                    (map-set verified-addresses address
-                        {
-                            status: u0,
-                            timestamp: block-height,
-                            kyc-data: (get kyc-data (get-verification-status address)),
-                            verifier: tx-sender
-                        }
-                    )
-                    (ok true)
-                )
-                (err ERR_INVALID_STATUS)
+            (asserts! (validate-status-change current-status (list u1 u2)) (err ERR_INVALID_STATUS))
+            (map-set verified-addresses address
+                {
+                    status: u0,
+                    timestamp: block-height,
+                    kyc-data: (get kyc-data (get-verification-status address)),
+                    verifier: tx-sender
+                }
             )
+            (ok true)
         )
     )
 )
 
 ;; Private function to validate input address
 (define-private (validate-input-address (address principal))
-    (if (is-valid-principal address)
-        (ok true)
-        (err ERR_INVALID_INPUT)
-    )
+    (ok (asserts! (is-valid-principal address) (err ERR_INVALID_INPUT)))
 )
 
 ;; Private function to validate owner-only operations
 (define-private (validate-owner-only)
-    (if (is-contract-owner tx-sender)
-        (ok true)
-        (err ERR_UNAUTHORIZED)
-    )
+    (ok (asserts! (is-contract-owner tx-sender) (err ERR_UNAUTHORIZED)))
 )
 
 (define-public (transfer-ownership (new-owner principal))
@@ -214,3 +190,4 @@
         kyc-data: u"",
         verifier: tx-sender
     })
+
