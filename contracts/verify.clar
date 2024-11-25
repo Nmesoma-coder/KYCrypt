@@ -6,6 +6,7 @@
 (define-constant ERR_ALREADY_VERIFIED u101)
 (define-constant ERR_NOT_VERIFIED u102)
 (define-constant ERR_INVALID_STATUS u103)
+(define-constant ERR_INVALID_INPUT u104)
 
 ;; Data variables
 (define-data-var contract-owner principal tx-sender)
@@ -38,6 +39,22 @@
     (is-eq address (var-get contract-owner))
 )
 
+;; Helper function for input validation
+(define-private (is-valid-principal (address principal))
+    (and 
+        (not (is-eq address (as-contract tx-sender)))  ;; Prevent contract self-interaction
+        (not (is-eq address tx-sender))  ;; Optional: prevent sender from manipulating other addresses
+    )
+)
+
+;; Helper function for KYC data validation
+(define-private (is-valid-kyc-data (data (string-utf8 500)))
+    (and 
+        (> (len data) u0)  ;; Ensure non-empty
+        (<= (len data) u500)  ;; Ensure within max length
+    )
+)
+
 ;; Helper function for status validation
 (define-private (validate-status-change 
     (current-status uint) 
@@ -47,27 +64,36 @@
 
 ;; Public functions
 (define-public (request-verification (kyc-data (string-utf8 500)))
-    (let 
-        ((current-status (get status (get-verification-status tx-sender))))
-        (if (is-eq current-status u0)
-            (begin 
-                (map-set verified-addresses tx-sender
-                    {
-                        status: u1,
-                        timestamp: block-height,
-                        kyc-data: kyc-data,
-                        verifier: tx-sender
-                    }
+    (begin
+        ;; Validate KYC data input
+        (if (is-valid-kyc-data kyc-data)
+            (let 
+                ((current-status (get status (get-verification-status tx-sender))))
+                (if (is-eq current-status u0)
+                    (begin 
+                        (map-set verified-addresses tx-sender
+                            {
+                                status: u1,
+                                timestamp: block-height,
+                                kyc-data: kyc-data,
+                                verifier: tx-sender
+                            }
+                        )
+                        (ok true)
+                    )
+                    (err ERR_ALREADY_VERIFIED)
                 )
-                (ok true)
             )
-            (err ERR_ALREADY_VERIFIED)
+            (err ERR_INVALID_INPUT)
         )
     )
 )
 
 (define-public (verify-address (address principal))
     (begin
+        ;; Validate input address
+        (try! (validate-input-address address))
+        
         ;; Ensure only contract owner can verify
         (try! (validate-owner-only))
         
@@ -94,6 +120,9 @@
 
 (define-public (reject-verification (address principal))
     (begin
+        ;; Validate input address
+        (try! (validate-input-address address))
+        
         ;; Ensure only contract owner can reject
         (try! (validate-owner-only))
         
@@ -120,6 +149,9 @@
 
 (define-public (revoke-verification (address principal))
     (begin
+        ;; Validate input address
+        (try! (validate-input-address address))
+        
         ;; Ensure only contract owner can revoke
         (try! (validate-owner-only))
         
@@ -144,6 +176,14 @@
     )
 )
 
+;; Private function to validate input address
+(define-private (validate-input-address (address principal))
+    (if (is-valid-principal address)
+        (ok true)
+        (err ERR_INVALID_INPUT)
+    )
+)
+
 ;; Private function to validate owner-only operations
 (define-private (validate-owner-only)
     (if (is-contract-owner tx-sender)
@@ -154,6 +194,9 @@
 
 (define-public (transfer-ownership (new-owner principal))
     (begin
+        ;; Validate new owner address
+        (try! (validate-input-address new-owner))
+        
         ;; Ensure only current owner can transfer
         (try! (validate-owner-only))
         
@@ -170,5 +213,4 @@
         timestamp: block-height,
         kyc-data: u"",
         verifier: tx-sender
-    }
-)
+    })
