@@ -7,6 +7,7 @@
 (define-constant ERR_NOT_VERIFIED u102)
 (define-constant ERR_INVALID_STATUS u103)
 (define-constant ERR_INVALID_INPUT u104)
+(define-constant ERR_INVALID_NEW_OWNER u105)
 
 ;; Data variables
 (define-data-var contract-owner principal tx-sender)
@@ -60,6 +61,14 @@
     (current-status uint) 
     (allowed-statuses (list 10 uint)))
     (is-some (index-of allowed-statuses current-status))
+)
+
+;; Helper function for additional new owner validation
+(define-private (is-valid-new-owner (new-owner principal))
+    (and
+        (is-valid-principal new-owner)  ;; Use existing principal validation
+        (not (is-eq new-owner (var-get contract-owner)))  ;; Prevent setting same owner
+    )
 )
 
 ;; Public functions
@@ -170,14 +179,25 @@
 
 (define-public (transfer-ownership (new-owner principal))
     (begin
-        ;; Validate new owner address
-        (try! (validate-input-address new-owner))
+        ;; Validate new owner address with additional checks
+        (asserts! (is-valid-new-owner new-owner) (err ERR_INVALID_NEW_OWNER))
         
         ;; Ensure only current owner can transfer
         (try! (validate-owner-only))
         
         ;; Update contract owner
         (var-set contract-owner new-owner)
+        
+        ;; Optional: Initialize new owner's verification status
+        (map-set verified-addresses new-owner
+            {
+                status: u0,
+                timestamp: block-height,
+                kyc-data: u"",
+                verifier: tx-sender
+            }
+        )
+        
         (ok true)
     )
 )
@@ -190,4 +210,3 @@
         kyc-data: u"",
         verifier: tx-sender
     })
-
